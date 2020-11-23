@@ -1,0 +1,332 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import pandas as pd
+
+
+# In[2]:
+
+
+df = pd.read_json('C:/Users/anshi/Desktop/tr.json')  #trump's twitter from 7.1 to 11.7
+
+
+# In[3]:
+
+
+df
+
+
+# In[4]:
+
+
+#token list generation
+from nltk.tokenize import TweetTokenizer
+tknzr = TweetTokenizer()
+
+def tokenizer_tweets(df):
+    
+    text = ''
+    for t in df['text']:
+        text += t
+    tokens = [i.lower() for i in tknzr.tokenize(text)]
+    
+    return tokens
+
+tokens = tokenizer_tweets(df)
+print(len(tokens))
+print(tokens[:20])
+
+
+# In[5]:
+
+
+import numpy as np
+mean = np.mean([len(i) for i in df.text])
+
+print("The lenght's average in tweets: %.2f%%" % mean)
+
+
+# In[6]:
+
+
+# extract the tweet with more FAVs and more RTs:
+
+fav_max = np.max(df['favorite_count'])
+rt_max  = np.max(df['retweet_count'])
+
+fav = df[df.favorite_count == fav_max].index[0]
+rt  = df[df.retweet_count == rt_max].index[0]
+
+# Max FAVs:
+print("The tweet with more likes is: \n{}".format(df['text'][fav]))
+print("Number of likes: {}".format(fav_max))
+print()
+# Max RTs:
+print("The tweet with more retweets is: \n{}".format(df['text'][rt]))
+print("Number of retweets: {}".format(rt_max))
+
+
+# In[7]:
+
+
+tfav = pd.Series(data=df['favorite_count'].values, index=df['created_at'])
+tret = pd.Series(data=df['retweet_count'].values, index=df['created_at'])
+
+
+# In[8]:
+
+
+get_ipython().run_line_magic('matplotlib', 'inline')
+tfav.plot(figsize=(16,4), label="favorite_count", legend=True)
+tret.plot(figsize=(16,4), label="retweet_count", legend=True);
+
+
+# In[9]:
+
+
+sources = list({source for source in df['source']})
+
+# print sources list:
+print("Creation of content sources:")
+for source in sources:
+    print("* {}".format(source))
+
+
+# In[10]:
+
+
+sources_fq = {s:len(df[df.source == s]) for s in sources}
+sources_fq
+
+
+# In[11]:
+
+
+
+import matplotlib.pyplot as plt
+labels = 'Twitter for iPhone', 'Web App', 'Media Studio'
+sizes = [4971, 4, 32]
+explode = (0, 0, 0)  # only "explode" the 2nd slice (i.e. 'Hogs')
+
+fig1, ax1 = plt.subplots()
+ax1.pie(sizes, explode=explode, labels=labels, autopct='%1.1f%%',
+        shadow=True, startangle=90, pctdistance=1.1, labeldistance=1.2)
+ax1.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+plt.tight_layout()
+
+plt.show()
+
+
+# In[12]:
+
+
+import nltk
+nltk.download('stopwords')
+
+
+# In[13]:
+
+
+#clear token list
+from nltk.corpus import stopwords
+import string
+
+punctiuation = list(string.punctuation)
+stop = stopwords.words('english') + punctiuation
+
+def clear_tokens(tokens):
+    
+    tokens_cl = [t for t in tokens if (len(t) >= 3) 
+                 and (not t.startswith(('#', '@')))
+                 and (not t.startswith('http'))
+                 and (t not in stop)
+                 and (t[0].isalpha())]
+    
+    return tokens_cl
+
+tokens_cl = clear_tokens(tokens)
+print(len(tokens_cl))
+print(tokens_cl[:20])
+
+
+# In[14]:
+
+
+from nltk import FreqDist
+
+def get_top20_of(i, n=20):
+    return FreqDist([t for t in tokens if t.startswith(i)]).most_common(n)
+
+
+# In[15]:
+
+
+#top 20 @
+get_top20_of('@')
+
+
+# In[16]:
+
+
+# top 10 hashtags
+get_top20_of('#')
+
+
+# In[17]:
+
+
+#top20 words for biden
+get_top20_of('biden')
+
+
+# In[18]:
+
+
+def get_marks_on_source(source):
+    '''
+    Function to gather the number of tweets marks on different sources
+    '''
+    results = {}
+    link_counter = 0
+    hashtag_counter = 0
+    quote_counter = 0
+    
+    for t in df.text:
+        if t.startswith('"'):
+            quote_counter += 1
+        for i in t.split(' '):
+            if i.startswith('https'):
+                link_counter += 1
+                break
+        for i in t.split(' '):
+            if i.startswith('#'):
+                hashtag_counter += 1
+                break
+
+        results['links'] = link_counter
+        results['quotes'] = quote_counter
+        results['hashtags'] = hashtag_counter
+        
+    return results
+
+
+re=get_marks_on_source('Twitter for iPhone')
+
+
+# In[19]:
+
+
+print(re)
+
+
+# In[21]:
+
+
+# create a dict of monthly tweets
+df_original = df[~df.is_retweet].copy()
+created_month = sorted({str(t)[:7] for t in df_original['created_at']})
+df_original['created_month'] = [str(t)[:7] for t in df_original['created_at']]
+monthly_tweets = {}
+
+for m in created_month:
+    tweets = [t.lower() for t in df_original[(df_original.created_month == m)].text]
+    monthly_tweets[m] = tweets
+
+
+# In[22]:
+
+
+def talk_about(name):
+    '''
+    Function to gather monthly tweets & return term frequency of the name
+    '''
+    name = name.lower()
+    name_mentions_frequency = {}
+    
+    for m in monthly_tweets.keys():
+        count = 0
+        for t in monthly_tweets[m]:
+            for i in t.split(' '):
+                if i == name:
+                    count += 1
+                    
+        name_mentions_frequency[m] = ('%.2f%%' % (((count)/(len(monthly_tweets[m])))*100))
+    
+    return name_mentions_frequency
+
+Biden_mentions_fq = talk_about('Biden')
+
+
+# In[23]:
+
+
+Biden_mentions_fq
+
+
+# In[24]:
+
+
+from textblob import TextBlob
+import re
+
+
+# In[25]:
+
+
+def clean_tweet(tweet):
+    '''
+    Function to clean the text in a tweet by removing links and special characters using regex.
+    '''
+    return ' '.join(re.sub("(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)", " ", tweet).split())
+
+def get_tweet_sentiment(tweet):
+    #Function to classify sentiments of passed tweets using TextBlob's sentiment method
+    analysis = TextBlob(clean_tweet(tweet))
+    #set sentiments
+    if analysis.sentiment.polarity > 0:
+        return 'Positive'
+    elif analysis.sentiment.polarity == 0:
+        return 'Neutral'
+    else:
+        return 'Negative'
+
+
+# In[26]:
+
+
+df['sentiment'] = [get_tweet_sentiment(t) for t in df.text]
+
+
+# In[27]:
+
+
+df
+
+
+# In[28]:
+
+
+for t in df[df['sentiment'] == 'Positive'].text[:5]:
+    print(t + '\n')
+
+
+# In[29]:
+
+
+for t in df[df['sentiment'] == 'Negative'].text[-5:]:
+    print(t + '\n')
+
+
+# In[30]:
+
+
+pos_tweets = df[(~df.is_retweet) & (df.sentiment == 'Positive')] 
+neu_tweets = df[(~df.is_retweet) & (df.sentiment == 'Neutral')]                                                                   
+neg_tweets = df[(~df.is_retweet) & (df.sentiment == 'Negative')]  
+                                                                        
+print("Percentage of positive tweets: %.2f%%" %(len(pos_tweets)*100/len(df[(~df.is_retweet)])))
+print("Percentage of neutral tweets: %.2f%%" %(len(neu_tweets)*100/len(df[(~df.is_retweet)])))
+print("Percentage of negative tweets: %.2f%%" %(len(neg_tweets)*100/len(df[(~df.is_retweet)])))
